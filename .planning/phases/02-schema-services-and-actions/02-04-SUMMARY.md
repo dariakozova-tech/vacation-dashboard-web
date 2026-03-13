@@ -1,94 +1,92 @@
 ---
 phase: 02-schema-services-and-actions
 plan: "04"
-subsystem: database
-tags: [drizzle, neon, typescript, schema, type-safe-queries]
+subsystem: server-actions
+tags: [server-actions, next.js, typescript, revalidation]
 
 # Dependency graph
 requires:
   - phase: 02-schema-services-and-actions
-    provides: "Drizzle schema tables (employees, vacationRecords) from plan 02-01"
+    provides: "Service layer from plans 02-02 and 02-03"
 provides:
-  - "Drizzle db client with schema wired in for type-safe relational queries"
-affects: [services, server-actions, any code using db.query.* API]
+  - "6 Server Actions replacing all Electron IPC mutation channels"
+affects: [client-components, phase-5-ui]
 
 # Tech tracking
 tech-stack:
   added: []
-  patterns: ["drizzle({ client: sql, schema }) — schema passed to drizzle() constructor for type-safe relational API"]
+  patterns: ["'use server' directive on action files", "ActionResult<T> discriminated union return type", "revalidatePath('/') called after await"]
 
 key-files:
-  created: []
-  modified: ["src/lib/db/index.ts — schema import added, passed to drizzle()"]
+  created:
+    - "src/lib/actions/employees.ts — addEmployeeAction, updateEmployeeAction, deleteEmployeeAction"
+    - "src/lib/actions/vacationRecords.ts — addVacationRecordAction, updateVacationRecordAction, deleteVacationRecordAction"
+  modified: []
 
 key-decisions:
-  - "Schema was already wired into db client during plan 02-02 execution; no code change required in 02-04"
-  - "No casing: 'snake_case' option used — explicit column name strings in schema.ts handle mapping (Option A from research)"
+  - "ActionResult<T> = { success: true; data: T } | { success: false; error: string } — never throws"
+  - "revalidatePath('/') called AFTER the service await, never before"
+  - "Parameters<typeof serviceFunction>[0] used for input types to stay in sync automatically"
+  - "No direct db imports in action files — service layer is the only DB access point (ACT-07)"
 
 patterns-established:
-  - "Pattern: import * as schema from './schema' then drizzle({ client: sql, schema }) — enables db.query.* relational API"
+  - "Server Action pattern: 'use server' + ActionResult<T> + try/catch + revalidatePath after await"
 
-requirements-completed: [DB-04, DB-05]
+requirements-completed: [ACT-01, ACT-02, ACT-03, ACT-04, ACT-05, ACT-06, ACT-07]
 
 # Metrics
-duration: 3min
+duration: ~20min (including gap fix)
 completed: 2026-03-13
 ---
 
-# Phase 02 Plan 04: Wire Drizzle Schema into DB Client Summary
+# Phase 02 Plan 04: Server Actions Summary
 
-**Drizzle db client wired with full schema import enabling type-safe relational queries via db.query.* API**
+**6 mutation Server Actions implemented, replacing all Electron IPC channels. Human verification approved.**
 
 ## Performance
 
-- **Duration:** 3 min
-- **Started:** 2026-03-13T10:02:37Z
-- **Completed:** 2026-03-13T10:05:42Z
-- **Tasks:** 1
-- **Files modified:** 0 (already correct from plan 02-02)
+- **Duration:** ~20 min
+- **Completed:** 2026-03-13
+- **Tasks:** 3 (2 auto + 1 human-verify checkpoint)
+- **Files created:** 2
 
 ## Accomplishments
-- Verified src/lib/db/index.ts already contains the exact schema-wired drizzle() call required
-- Confirmed TypeScript compilation is clean with no errors
-- Both plan requirements DB-04 and DB-05 are satisfied
+- Created `src/lib/actions/employees.ts` — 3 Server Actions (add, update, delete)
+- Created `src/lib/actions/vacationRecords.ts` — 3 Server Actions (add, update, delete)
+- All 6 actions use `'use server'` directive, `ActionResult<T>` return, `revalidatePath('/')` after await
+- No direct DB imports in action files — full service layer isolation maintained
+- TypeScript: clean (`npx tsc --noEmit` exits 0)
+- Jest: 24/24 tests pass
+- Human verification checkpoint: APPROVED
 
 ## Task Commits
 
-Each task was committed atomically:
+1. **Task 1: Employee Server Actions** — `831eaf4` feat(02-03): add employee Server Actions
+2. **Task 2: Vacation Record Server Actions** — `2f480f5` feat(02-04): implement vacation record Server Actions
 
-1. **Task 1: Wire schema into Drizzle db client** - `1acc6a6` (feat, committed in plan 02-02)
-
-**Plan metadata:** (see final commit below)
-
-## Files Created/Modified
-- `src/lib/db/index.ts` - Schema import added, drizzle() call passes schema for type-safe queries (committed in plan 02-02)
+## Files Created
+- `src/lib/actions/employees.ts` — addEmployeeAction, updateEmployeeAction, deleteEmployeeAction
+- `src/lib/actions/vacationRecords.ts` — addVacationRecordAction, updateVacationRecordAction, deleteVacationRecordAction
 
 ## Decisions Made
-- No code change required — plan 02-02 had already implemented `import * as schema from './schema'` and `drizzle({ client: sql, schema })` correctly
-- No `casing: 'snake_case'` option added per plan instructions — explicit column name strings in schema.ts already handle snake_case mapping
+- Used `Parameters<typeof serviceFunction>[0]` for input types to avoid type duplication
+- `deleteEmployeeAction` / `deleteVacationRecordAction` return `ActionResult<void>` with `data: undefined`
 
 ## Deviations from Plan
-
-None - plan executed exactly as written. File was already in correct state from prior plan execution.
+- Employee Server Actions were created in plan 02-03 execution (pre-implemented), then vacationRecords.ts created to complete the plan
 
 ## Issues Encountered
-None.
-
-## User Setup Required
-None - no external service configuration required.
-
-## Next Phase Readiness
-- db client is fully type-safe with schema wired in
-- Ready for type-safe service functions in plans 02-05 and 02-06
-- db.query.employees and db.query.vacationRecords relational API available
+- Prior executor misidentified plan as "wire schema into db client" — gap closed inline
 
 ## Self-Check
 
-- [x] src/lib/db/index.ts exists with correct content
-- [x] `import * as schema from './schema'` present at line 4
-- [x] `drizzle({ client: sql, schema })` present at line 7
-- [x] `import 'server-only'` guard present as first import
-- [x] TypeScript compilation clean (npx tsc --noEmit exits 0)
+- [x] `src/lib/actions/employees.ts` exists, `'use server'` first line, 3 actions exported
+- [x] `src/lib/actions/vacationRecords.ts` exists, `'use server'` first line, 3 actions exported
+- [x] No `from '@/lib/db'` in either action file
+- [x] `revalidatePath('/')` present in both files (3 calls each)
+- [x] TypeScript compilation clean
+- [x] Jest 24/24 pass
+- [x] Human verification: APPROVED
 
 ## Self-Check: PASSED
 
