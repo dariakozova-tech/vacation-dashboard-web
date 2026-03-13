@@ -56,7 +56,8 @@ describe('calculateUsedDays', () => {
     const records = [
       { record_type: 'days_sum' as const, year: 2024, days_count: 14 },
     ];
-    const result = calculateUsedDays(records, new Date('2024-01-01'), new Date('2025-01-01'));
+    // Use local date constructors (same as implementation internals) to avoid TZ mismatch
+    const result = calculateUsedDays(records, new Date(2024, 0, 1), new Date(2025, 0, 1));
     expect(result).toBe(14);
   });
 
@@ -64,7 +65,7 @@ describe('calculateUsedDays', () => {
     const records = [
       { record_type: 'days_sum' as const, year: 2023, days_count: 10 },
     ];
-    const result = calculateUsedDays(records, new Date('2024-01-01'), new Date('2025-01-01'));
+    const result = calculateUsedDays(records, new Date(2024, 0, 1), new Date(2025, 0, 1));
     expect(result).toBe(0);
   });
 
@@ -73,7 +74,7 @@ describe('calculateUsedDays', () => {
       { record_type: 'period' as const, start_date: '2025-06-01', days_count: 7 },
     ];
     // start_date 2025-06-01 is before 2026 cutoff, should be skipped
-    const result = calculateUsedDays(records, new Date('2025-01-01'), new Date('2026-01-01'));
+    const result = calculateUsedDays(records, new Date(2025, 0, 1), new Date(2026, 0, 1));
     expect(result).toBe(0);
   });
 
@@ -81,7 +82,7 @@ describe('calculateUsedDays', () => {
     const records = [
       { record_type: 'period' as const, start_date: '2026-03-01', days_count: 7 },
     ];
-    const result = calculateUsedDays(records, new Date('2026-01-01'), new Date('2027-01-01'));
+    const result = calculateUsedDays(records, new Date(2026, 0, 1), new Date(2027, 0, 1));
     expect(result).toBe(7);
   });
 
@@ -89,7 +90,7 @@ describe('calculateUsedDays', () => {
     const records = [
       { record_type: 'period' as const, start_date: '2025-12-01', days_count: 7 },
     ];
-    const result = calculateUsedDays(records, new Date('2026-01-01'), new Date('2027-01-01'));
+    const result = calculateUsedDays(records, new Date(2026, 0, 1), new Date(2027, 0, 1));
     expect(result).toBe(0);
   });
 });
@@ -113,13 +114,14 @@ describe('calculateEmployeeBalance', () => {
   });
 
   // Seed employee: Бондаренко Олексій (2021-07-01) — reset employee
+  // Earned to reset date: 108 days. Need used > 108 to trigger wasReset.
   it('returns wasReset=true for Бондаренко Олексій with balance_reset record', () => {
     const employee = { hire_date: '2021-07-01' };
     const records = [
       { record_type: 'balance_reset' as const, days_count: 4 },
-      // days_sum records before reset to make balance go negative
-      { record_type: 'days_sum' as const, year: 2024, days_count: 28 },
-      { record_type: 'days_sum' as const, year: 2025, days_count: 28 },
+      // days_sum records before reset to make balance go negative (total used: 112 > 108)
+      { record_type: 'days_sum' as const, year: 2024, days_count: 60 },
+      { record_type: 'days_sum' as const, year: 2025, days_count: 52 },
     ];
     const result = calculateEmployeeBalance(employee, records, new Date('2026-03-12'));
     expect(result.wasReset).toBe(true);
@@ -128,12 +130,14 @@ describe('calculateEmployeeBalance', () => {
   });
 
   // Seed employee: Мельник Дмитро (2020-01-10) — reset employee
+  // Earned to reset date: 144 days. Need used > 144 to trigger wasReset.
   it('returns wasReset=true for Мельник Дмитро with balance_reset record', () => {
     const employee = { hire_date: '2020-01-10' };
     const records = [
       { record_type: 'balance_reset' as const, days_count: 10 },
-      { record_type: 'days_sum' as const, year: 2024, days_count: 40 },
-      { record_type: 'days_sum' as const, year: 2025, days_count: 40 },
+      // days_sum records before reset to make balance go negative (total used: 155 > 144)
+      { record_type: 'days_sum' as const, year: 2024, days_count: 80 },
+      { record_type: 'days_sum' as const, year: 2025, days_count: 75 },
     ];
     const result = calculateEmployeeBalance(employee, records, new Date('2026-03-12'));
     expect(result.wasReset).toBe(true);
