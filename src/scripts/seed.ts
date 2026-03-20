@@ -1,7 +1,13 @@
-import 'dotenv/config';
-import { db } from '../lib/db/index';
+import { config } from 'dotenv';
+config({ path: '.env.local' });
+import { neon } from '@neondatabase/serverless';
+import { drizzle } from 'drizzle-orm/neon-http';
 import { employees, vacationRecords } from '../lib/db/schema';
 import { eq } from 'drizzle-orm';
+
+// Direct db connection for seed script — avoids server-only guard in src/lib/db/index.ts
+const sql = neon(process.env.DATABASE_URL!);
+const db = drizzle({ client: sql, schema: { employees, vacationRecords } });
 
 // ── Employee data (mirrors Electron db.js EMPLOYEES array) ───────────────────
 const TOV_EMPLOYEES = [
