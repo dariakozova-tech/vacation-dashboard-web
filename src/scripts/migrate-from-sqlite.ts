@@ -91,8 +91,10 @@ async function main() {
   const maxEmpId = Math.max(...employees.map((e: any) => e.id));
   const maxVacId = Math.max(...records.map((r: any) => r.id));
   console.log(`Resetting sequences: employees_id_seq -> ${maxEmpId + 1}, vacation_records_id_seq -> ${maxVacId + 1}`);
-  await sql`ALTER SEQUENCE employees_id_seq RESTART WITH ${maxEmpId + 1}`;
-  await sql`ALTER SEQUENCE vacation_records_id_seq RESTART WITH ${maxVacId + 1}`;
+  // ALTER SEQUENCE does not accept parameterized values — use sql.unsafe or raw query string
+  // We use SELECT setval() which works with parameters
+  await sql`SELECT setval('employees_id_seq', ${maxEmpId + 1}, false)`;
+  await sql`SELECT setval('vacation_records_id_seq', ${maxVacId + 1}, false)`;
   console.log('Sequences reset.');
 
   // Step 8: Verify migration
