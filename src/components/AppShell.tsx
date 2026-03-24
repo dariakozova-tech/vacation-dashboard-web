@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Users, BarChart2 } from 'lucide-react';
+import EmployeesTab from './EmployeesTab';
 
 interface AppShellProps {
   employees: any[];
@@ -52,7 +53,7 @@ export default function AppShell({ employees, allRecords }: AppShellProps) {
 
         <div className="content-area">
           {activeTab === 'employees' ? (
-            <div>EmployeesTab placeholder</div>
+            <EmployeesTab employees={employees} />
           ) : (
             <div>AnalyticsTab placeholder</div>
           )}
