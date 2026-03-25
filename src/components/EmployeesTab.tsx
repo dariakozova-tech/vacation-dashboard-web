@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { Search, ChevronDown, ChevronRight } from 'lucide-react';
+import { Search, ChevronDown, ChevronRight, Pencil, Trash2 } from 'lucide-react';
 import Tooltip from './Tooltip';
 import EmployeeDetail from './EmployeeDetail';
 import { formatDate, VacationRecordInput } from '@/lib/utils/vacationLogic';
@@ -28,6 +28,16 @@ type SortKey = 'full_name' | 'hire_date' | 'earned' | 'used2024' | 'used2025' | 
 interface SortConfig {
   key: SortKey;
   dir: 'asc' | 'desc';
+}
+
+interface EmployeesTabProps {
+  employees: EmployeeRow[];
+  onAddEmployee: () => void;
+  onEditEmployee: (emp: EmployeeRow) => void;
+  onDeleteEmployee: (emp: EmployeeRow) => void;
+  onAddVacation: (employeeId: number) => void;
+  onEditVacation: (employeeId: number, record: VacationRecordInput) => void;
+  onDeleteVacation: (recordId: number) => void;
 }
 
 const COLUMNS: { key: SortKey | '_expand'; label: string; sortable: boolean; width: string }[] = [
@@ -62,12 +72,22 @@ function EmployeeTable({
   onSort,
   expandedId,
   onToggleExpand,
+  onEditEmployee,
+  onDeleteEmployee,
+  onAddVacation,
+  onEditVacation,
+  onDeleteVacation,
 }: {
   employees: EmployeeRow[];
   sortConfig: SortConfig;
   onSort: (key: SortKey) => void;
   expandedId: number | null;
   onToggleExpand: (id: number) => void;
+  onEditEmployee: (emp: EmployeeRow) => void;
+  onDeleteEmployee: (emp: EmployeeRow) => void;
+  onAddVacation: (employeeId: number) => void;
+  onEditVacation: (employeeId: number, record: VacationRecordInput) => void;
+  onDeleteVacation: (recordId: number) => void;
 }) {
   if (employees.length === 0) return null;
 
@@ -87,6 +107,7 @@ function EmployeeTable({
               {col.sortable && <SortIcon colKey={col.key} sortConfig={sortConfig} />}
             </th>
           ))}
+          <th style={{ width: 70 }}></th>
         </tr>
       </thead>
       <tbody>
@@ -157,15 +178,39 @@ function EmployeeTable({
               <td>
                 <BalanceChip value={emp.balance} />
               </td>
+
+              {/* Actions */}
+              <td onClick={(e) => e.stopPropagation()}>
+                <div className="row-actions">
+                  <button
+                    className="btn btn-icon"
+                    onClick={(e) => { e.stopPropagation(); onEditEmployee(emp); }}
+                  >
+                    <Pencil size={13} />
+                  </button>
+                  <button
+                    className="btn btn-icon btn-danger"
+                    onClick={(e) => { e.stopPropagation(); onDeleteEmployee(emp); }}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              </td>
             </tr>
 
             {/* Detail panel row */}
             <tr key={`detail-${emp.id}`} className="detail-row">
-              <td colSpan={COLUMNS.length + 1}>
+              <td colSpan={COLUMNS.length + 2}>
                 <div className={`detail-panel ${expandedId === emp.id ? 'open' : ''}`}>
                   {expandedId === emp.id && (
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    <EmployeeDetail employee={emp as any} records={emp.records} />
+                    <EmployeeDetail
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      employee={emp as any}
+                      records={emp.records}
+                      onAddVacation={() => onAddVacation(emp.id)}
+                      onEditVacation={(record) => onEditVacation(emp.id, record)}
+                      onDeleteVacation={(recordId) => onDeleteVacation(recordId)}
+                    />
                   )}
                 </div>
               </td>
@@ -178,7 +223,15 @@ function EmployeeTable({
 }
 
 // ── Main Component ────────────────────────────────────────────────────────────
-export default function EmployeesTab({ employees }: { employees: EmployeeRow[] }) {
+export default function EmployeesTab({
+  employees,
+  onAddEmployee,
+  onEditEmployee,
+  onDeleteEmployee,
+  onAddVacation,
+  onEditVacation,
+  onDeleteVacation,
+}: EmployeesTabProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'full_name', dir: 'asc' });
   const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -235,6 +288,11 @@ export default function EmployeesTab({ employees }: { employees: EmployeeRow[] }
     onSort: handleSort,
     expandedId,
     onToggleExpand: toggleExpand,
+    onEditEmployee,
+    onDeleteEmployee,
+    onAddVacation,
+    onEditVacation,
+    onDeleteVacation,
   };
 
   return (

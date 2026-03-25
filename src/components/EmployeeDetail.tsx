@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
+import { Plus, Pencil, Trash2 } from 'lucide-react';
 import Tooltip from './Tooltip';
 import { formatDate, getVacationWorkingYear, VacationRecordInput } from '@/lib/utils/vacationLogic';
 
@@ -21,6 +22,9 @@ interface EmployeeWithBalance {
 interface EmployeeDetailProps {
   employee: EmployeeWithBalance;
   records: VacationRecordInput[];
+  onAddVacation?: () => void;
+  onEditVacation?: (record: VacationRecordInput) => void;
+  onDeleteVacation?: (recordId: number) => void;
 }
 
 // ── Working Year Badge ────────────────────────────────────────────────────────
@@ -81,10 +85,14 @@ function RecordsTable({
   records,
   employee,
   allRecords,
+  onEditVacation,
+  onDeleteVacation,
 }: {
   records: VacationRecordInput[];
   employee: EmployeeWithBalance;
   allRecords: VacationRecordInput[];
+  onEditVacation?: (record: VacationRecordInput) => void;
+  onDeleteVacation?: (recordId: number) => void;
 }) {
   if (records.length === 0) {
     return <div className="detail-empty">Записів немає</div>;
@@ -99,6 +107,7 @@ function RecordsTable({
           <th>Днів</th>
           <th>Робочий рік</th>
           <th>Нотатка</th>
+          <th style={{ width: 70 }}></th>
         </tr>
       </thead>
       <tbody>
@@ -127,6 +136,16 @@ function RecordsTable({
             >
               {record.note || '—'}
             </td>
+            <td>
+              <div className="row-actions">
+                <button className="btn btn-icon" onClick={() => onEditVacation?.(record)}>
+                  <Pencil size={13} />
+                </button>
+                <button className="btn btn-icon btn-danger" onClick={() => record.id != null && onDeleteVacation?.(record.id)}>
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            </td>
           </tr>
         ))}
       </tbody>
@@ -135,7 +154,13 @@ function RecordsTable({
 }
 
 // ── Main Component ────────────────────────────────────────────────────────────
-export default function EmployeeDetail({ employee, records }: EmployeeDetailProps) {
+export default function EmployeeDetail({
+  employee,
+  records,
+  onAddVacation,
+  onEditVacation,
+  onDeleteVacation,
+}: EmployeeDetailProps) {
   const currentYear = new Date().getFullYear();
 
   const allPeriods = useMemo(
@@ -200,8 +225,17 @@ export default function EmployeeDetail({ employee, records }: EmployeeDetailProp
       )}
 
       {/* Header */}
-      <div style={{ marginBottom: 10 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
         <div className="detail-title">Відпустки</div>
+        {onAddVacation && (
+          <button
+            className="btn btn-secondary"
+            style={{ fontSize: 12 }}
+            onClick={onAddVacation}
+          >
+            <Plus size={13} /> Додати
+          </button>
+        )}
       </div>
 
       {allPeriods.length === 0 ? (
@@ -230,6 +264,7 @@ export default function EmployeeDetail({ employee, records }: EmployeeDetailProp
                   <th>Днів</th>
                   <th>Робочий рік</th>
                   <th>Нотатка</th>
+                  <th style={{ width: 70 }}></th>
                 </tr>
               </thead>
               <tbody>
@@ -242,7 +277,7 @@ export default function EmployeeDetail({ employee, records }: EmployeeDetailProp
                       {/* Year separator */}
                       <tr key={`sep-${yr}`}>
                         <td
-                          colSpan={5}
+                          colSpan={6}
                           style={{
                             background: 'var(--bg-secondary, #F5F5F7)',
                             color: 'var(--text-secondary)',
@@ -277,12 +312,22 @@ export default function EmployeeDetail({ employee, records }: EmployeeDetailProp
                           >
                             {record.note || '—'}
                           </td>
+                          <td>
+                            <div className="row-actions">
+                              <button className="btn btn-icon" onClick={() => onEditVacation?.(record)}>
+                                <Pencil size={13} />
+                              </button>
+                              <button className="btn btn-icon btn-danger" onClick={() => record.id != null && onDeleteVacation?.(record.id)}>
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                          </td>
                         </tr>
                       ))}
                       {/* Year total footer */}
                       <tr key={`total-${yr}`}>
                         <td
-                          colSpan={5}
+                          colSpan={6}
                           style={{
                             textAlign: 'right',
                             fontSize: 11,
@@ -305,6 +350,8 @@ export default function EmployeeDetail({ employee, records }: EmployeeDetailProp
               records={visibleRecords}
               employee={employee}
               allRecords={records}
+              onEditVacation={onEditVacation}
+              onDeleteVacation={onDeleteVacation}
             />
           )}
         </>
