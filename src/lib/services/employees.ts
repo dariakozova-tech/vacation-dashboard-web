@@ -1,6 +1,6 @@
 import 'server-only';
 import { db } from '@/lib/db';
-import { employees, vacationRecords } from '@/lib/db/schema';
+import { employees } from '@/lib/db/schema';
 import { eq, asc } from 'drizzle-orm';
 
 export async function getEmployees() {
@@ -39,6 +39,6 @@ export async function updateEmployee(data: {
 }
 
 export async function deleteEmployee(id: number) {
-  await db.delete(vacationRecords).where(eq(vacationRecords.employeeId, id));
+  // PostgreSQL ON DELETE CASCADE (DB-04) handles vacation_records automatically
   await db.delete(employees).where(eq(employees.id, id));
 }

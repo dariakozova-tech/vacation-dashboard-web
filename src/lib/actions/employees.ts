@@ -2,7 +2,6 @@
 
 import { revalidatePath } from 'next/cache';
 import {
-  getEmployees,
   addEmployee,
   updateEmployee,
   deleteEmployee,
@@ -12,15 +11,6 @@ import type { Employee } from '@/lib/db/schema';
 type ActionResult<T> =
   | { success: true; data: T }
   | { success: false; error: string };
-
-export async function getEmployeesAction(): Promise<ActionResult<Employee[]>> {
-  try {
-    const data = await getEmployees();
-    return { success: true, data };
-  } catch (e) {
-    return { success: false, error: e instanceof Error ? e.message : String(e) };
-  }
-}
 
 export async function addEmployeeAction(
   input: Parameters<typeof addEmployee>[0],
