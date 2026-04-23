@@ -5,6 +5,8 @@ import { getAllEmployeeChildren } from '@/lib/services/employeeChildren';
 import { calculateEmployeeBalance } from '@/lib/utils/vacationLogic';
 import AppShell from '@/components/AppShell';
 
+export const dynamic = 'force-dynamic';
+
 export default async function Home() {
   const [employees, allRecords, allCategories, allChildren] = await Promise.all([
     getEmployees(),
