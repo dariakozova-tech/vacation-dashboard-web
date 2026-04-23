@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Search, ChevronDown, ChevronRight, Pencil, Trash2 } from 'lucide-react';
 import Tooltip from './Tooltip';
 import EmployeeDetail from './EmployeeDetail';
@@ -112,10 +112,9 @@ function EmployeeTable({
       </thead>
       <tbody>
         {employees.map((emp) => (
-          <>
+          <React.Fragment key={emp.id}>
             {/* Main row */}
             <tr
-              key={`row-${emp.id}`}
               className={expandedId === emp.id ? 'expanded' : ''}
               onClick={() => onToggleExpand(emp.id)}
             >
@@ -132,6 +131,13 @@ function EmployeeTable({
                     <Tooltip text={`Баланс обнулено 01.01.2026: було −${emp.resetDays} дн.`}>
                       <span className="reset-badge" style={{ marginLeft: 6, fontSize: 14, cursor: 'default' }}>
                         ⚠
+                      </span>
+                    </Tooltip>
+                  )}
+                  {emp.records.some(r => r.record_type === 'period' && r.start_date?.startsWith('2026') && r.submitted_on_time === false) && (
+                    <Tooltip text="Є відпустки за 2026 рік, за якими не подано документи вчасно">
+                      <span className="reset-badge" style={{ marginLeft: 6, fontSize: 14, cursor: 'default', color: 'var(--danger)', background: 'transparent' }}>
+                        ❗
                       </span>
                     </Tooltip>
                   )}
@@ -199,7 +205,7 @@ function EmployeeTable({
             </tr>
 
             {/* Detail panel row */}
-            <tr key={`detail-${emp.id}`} className="detail-row">
+            <tr className="detail-row">
               <td colSpan={COLUMNS.length + 2}>
                 <div className={`detail-panel ${expandedId === emp.id ? 'open' : ''}`}>
                   {expandedId === emp.id && (
@@ -215,7 +221,7 @@ function EmployeeTable({
                 </div>
               </td>
             </tr>
-          </>
+          </React.Fragment>
         ))}
       </tbody>
     </table>

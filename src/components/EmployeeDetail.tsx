@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
 import Tooltip from './Tooltip';
 import { formatDate, getVacationWorkingYear, VacationRecordInput } from '@/lib/utils/vacationLogic';
@@ -16,6 +16,13 @@ interface EmployeeWithBalance {
   used2026: number;
   wasReset: boolean;
   resetDays: number;
+  earned: number;
+  balance: number;
+  annualBaseDays?: number;
+  ubdBalance?: { year: number; entitled: number; used: number; remaining: number };
+  socialBalance?: { totalEarned: number; used: number; remaining: number; currentYearEntitlement: number };
+  categories?: any[];
+  children?: any[];
   [key: string]: unknown;
 }
 
@@ -80,6 +87,48 @@ function WorkingYearBadge({
   );
 }
 
+// ── Status Badge ──────────────────────────────────────────────────────────────
+function StatusBadge({ record }: { record: VacationRecordInput }) {
+  const status = (record as any).status as string | undefined;
+  if (!status || status === 'approved') return null;
+
+  if (status === 'pending') {
+    return (
+      <span style={{
+        display: 'inline-block',
+        background: '#FFF3E0',
+        color: '#E65100',
+        borderRadius: 6,
+        fontSize: 10,
+        padding: '1px 6px',
+        fontWeight: 500,
+        marginLeft: 4,
+      }}>
+        На розгляді
+      </span>
+    );
+  }
+
+  if (status === 'declined') {
+    return (
+      <span style={{
+        display: 'inline-block',
+        background: '#FFEBEE',
+        color: '#C62828',
+        borderRadius: 6,
+        fontSize: 10,
+        padding: '1px 6px',
+        fontWeight: 500,
+        marginLeft: 4,
+      }}>
+        Відхилено
+      </span>
+    );
+  }
+
+  return null;
+}
+
 // ── Records Table (single year) ───────────────────────────────────────────────
 function RecordsTable({
   records,
@@ -107,12 +156,31 @@ function RecordsTable({
           <th>Днів</th>
           <th>Робочий рік</th>
           <th>Нотатка</th>
+          <th>Вчасно</th>
           <th style={{ width: 70 }}></th>
         </tr>
       </thead>
       <tbody>
         {records.map((record) => (
-          <tr key={record.id}>
+          record.record_type === 'days_sum' ? (
+            <tr key={`ds-${record.id}`} style={{ background: '#F5F5F7' }}>
+              <td colSpan={3} style={{ fontStyle: 'italic', color: 'var(--text-secondary)', fontSize: 12 }}>
+                Архівний підсумок {record.year}: <strong>{record.days_count} дн.</strong>
+              </td>
+              <td style={{ fontStyle: 'italic', color: 'var(--text-tertiary)', fontSize: 11 }}>
+                {record.vacation_type && record.vacation_type !== 'main' ? record.vacation_type.toUpperCase() : ''}
+              </td>
+              <td style={{ color: 'var(--text-tertiary)', fontSize: 11, fontStyle: 'italic' }}>{record.note || '—'}</td>
+              <td>—</td>
+              <td>
+                <div className="row-actions">
+                  <button className="btn btn-icon" onClick={() => onEditVacation?.(record)}><Pencil size={13} /></button>
+                  <button className="btn btn-icon btn-danger" onClick={() => record.id != null && onDeleteVacation?.(record.id)}><Trash2 size={13} /></button>
+                </div>
+              </td>
+            </tr>
+          ) : (
+          <tr key={record.id} style={(record as any).status === 'pending' ? { opacity: 0.7 } : (record as any).status === 'declined' ? { opacity: 0.5, textDecoration: 'line-through' } : undefined}>
             <td style={{ color: 'var(--text-primary)' }}>
               {record.start_date ? formatDate(record.start_date) : '—'}
             </td>
@@ -121,9 +189,16 @@ function RecordsTable({
             </td>
             <td style={{ fontWeight: 600 }}>
               {record.days_count != null ? record.days_count : '—'}
+              <StatusBadge record={record} />
             </td>
             <td>
-              <WorkingYearBadge employee={employee} records={allRecords} record={record} />
+              {record.vacation_type === 'ubd' ? (
+                <span className="balance-chip" style={{ background: '#E8DEF8', color: '#4A4458' }}>УБД</span>
+              ) : record.vacation_type === 'social' ? (
+                <span className="balance-chip" style={{ background: '#C2E7FF', color: '#004A77' }}>На дітей</span>
+              ) : (
+                <WorkingYearBadge employee={employee} records={allRecords} record={record} />
+              )}
             </td>
             <td
               style={{
@@ -136,6 +211,24 @@ function RecordsTable({
             >
               {record.note || '—'}
             </td>
+            <td style={{ textAlign: 'center' }}>
+              {record.record_type === 'period' ? (
+                <button
+                  type="button"
+                  className="btn btn-icon"
+                  style={{ background: 'transparent', cursor: 'grab' }}
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    if (!record.id) return;
+                    const { toggleSubmittedOnTimeAction } = await import('@/lib/actions/vacationRecords');
+                    await toggleSubmittedOnTimeAction(record.id, record.submitted_on_time ?? true);
+                  }}
+                  title="Документи подано вчасно"
+                >
+                  {record.submitted_on_time ? '✅' : '❌'}
+                </button>
+              ) : '—'}
+            </td>
             <td>
               <div className="row-actions">
                 <button className="btn btn-icon" onClick={() => onEditVacation?.(record)}>
@@ -147,6 +240,7 @@ function RecordsTable({
               </div>
             </td>
           </tr>
+          )
         ))}
       </tbody>
     </table>
@@ -163,6 +257,12 @@ export default function EmployeeDetail({
 }: EmployeeDetailProps) {
   const currentYear = new Date().getFullYear();
 
+  // days_sum archive records (displayed separately per year)
+  const daysSumRecords = useMemo(
+    () => records.filter((r) => r.record_type === 'days_sum' && r.year),
+    [records]
+  );
+
   const allPeriods = useMemo(
     () =>
       records
@@ -172,9 +272,12 @@ export default function EmployeeDetail({
   );
 
   const years = useMemo(() => {
-    const yearSet = new Set(allPeriods.map((r) => parseInt(r.start_date!.slice(0, 4), 10)));
+    const yearSet = new Set([
+      ...allPeriods.map((r) => parseInt(r.start_date!.slice(0, 4), 10)),
+      ...daysSumRecords.map((r) => r.year!),
+    ]);
     return Array.from(yearSet).sort((a, b) => a - b);
-  }, [allPeriods]);
+  }, [allPeriods, daysSumRecords]);
 
   const defaultTab = useMemo(() => {
     if (years.includes(currentYear)) return String(currentYear);
@@ -184,9 +287,11 @@ export default function EmployeeDetail({
   const [activeTab, setActiveTab] = useState(defaultTab);
 
   const visibleRecords = useMemo(() => {
-    if (activeTab === 'all') return allPeriods;
-    return allPeriods.filter((r) => r.start_date!.startsWith(activeTab));
-  }, [allPeriods, activeTab]);
+    if (activeTab === 'all') return [...daysSumRecords, ...allPeriods];
+    const yrDaysSum = daysSumRecords.filter((r) => String(r.year) === activeTab);
+    const yrPeriods = allPeriods.filter((r) => r.start_date!.startsWith(activeTab));
+    return [...yrDaysSum, ...yrPeriods];
+  }, [allPeriods, daysSumRecords, activeTab]);
 
   const yearTotals = useMemo(() => {
     const totals: Record<string, number> = {};
@@ -194,8 +299,12 @@ export default function EmployeeDetail({
       const yr = r.start_date!.slice(0, 4);
       totals[yr] = (totals[yr] || 0) + (r.days_count || 0);
     }
+    for (const r of daysSumRecords) {
+      const yr = String(r.year);
+      totals[yr] = (totals[yr] || 0) + (r.days_count || 0);
+    }
     return totals;
-  }, [allPeriods]);
+  }, [allPeriods, daysSumRecords]);
 
   const tabStyle = (key: string): React.CSSProperties => ({
     padding: '4px 12px',
@@ -238,7 +347,56 @@ export default function EmployeeDetail({
         )}
       </div>
 
-      {allPeriods.length === 0 ? (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 20 }}>
+        {/* Щорічна основна відпустка */}
+        <div style={{ padding: '12px 14px', background: '#F5F5F7', borderRadius: 10 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Щорічна основна відпустка</div>
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)', display: 'grid', gridTemplateColumns: 'minmax(120px, auto) 1fr', gap: '4px 12px' }}>
+            <span>Норма: <strong style={{ color: 'var(--text-primary)' }}>{employee.annualBaseDays || 24} дн./рік</strong>
+              {(employee.annualBaseDays === 30) && <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}> (інвалідність I/II)</span>}
+              {(employee.annualBaseDays === 26) && <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}> (інвалідність III)</span>}
+            </span>
+            <span>Зароблено: <strong style={{ color: 'var(--text-primary)' }}>{employee.earned} дн.</strong></span>
+            <span>Залишок: <strong style={{ color: employee.balance < 0 ? 'var(--danger)' : 'var(--text-primary)' }}>{employee.balance} дн.</strong>
+              <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}> (накопичується)</span>
+            </span>
+          </div>
+        </div>
+
+        {/* Додаткова відпустка УБД */}
+        {employee.ubdBalance && employee.ubdBalance.entitled > 0 && (
+          <div style={{ padding: '12px 14px', background: '#FDF7EE', borderRadius: 10, border: '1px solid #F3E0C5' }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#B06500', marginBottom: 6 }}>Додаткова відпустка УБД ({currentYear})</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', display: 'grid', gridTemplateColumns: 'minmax(120px, auto) 1fr', gap: '4px 12px' }}>
+              <span>Нараховано: <strong style={{ color: 'var(--text-primary)' }}>{employee.ubdBalance.entitled} дн.</strong></span>
+              <span>Використано: <strong style={{ color: 'var(--text-primary)' }}>{employee.ubdBalance.used} дн.</strong></span>
+              <span>Залишок: <strong style={{ color: 'var(--text-primary)' }}>{employee.ubdBalance.remaining} дн.</strong></span>
+            </div>
+            <div style={{ marginTop: 6, fontSize: 11, color: '#A36814' }}>
+              ⚠️ Згорає 31.12.{currentYear}, не переноситься
+            </div>
+          </div>
+        )}
+
+        {/* Соціальна відпустка на дітей */}
+        {employee.socialBalance && (employee.socialBalance.totalEarned > 0 || (employee.children && employee.children.length > 0)) && (
+          <div style={{ padding: '12px 14px', background: '#F0F9FF', borderRadius: 10, border: '1px solid #BEE3F8' }}>
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#0969DA', marginBottom: 6 }}>Соціальна відпустка (діти)</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', display: 'grid', gridTemplateColumns: 'minmax(120px, auto) 1fr', gap: '4px 12px' }}>
+              <span>Накопичено: <strong style={{ color: 'var(--text-primary)' }}>{employee.socialBalance.totalEarned} дн.</strong></span>
+              <span>Використано: <strong style={{ color: 'var(--text-primary)' }}>{employee.socialBalance.used} дн.</strong></span>
+              <span>Залишок: <strong style={{ color: 'var(--text-primary)' }}>{employee.socialBalance.remaining} дн.</strong></span>
+            </div>
+            <div style={{ marginTop: 6, fontSize: 11, color: '#2C73B3' }}>
+              {employee.socialBalance!.totalEarned > 0
+                ? 'Не згорає — накопичується щорічно'
+                : 'Уточніть дати народження для розрахунку'}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {allPeriods.length === 0 && daysSumRecords.length === 0 ? (
         <div className="detail-empty">Записів поки немає</div>
       ) : (
         <>
@@ -264,6 +422,7 @@ export default function EmployeeDetail({
                   <th>Днів</th>
                   <th>Робочий рік</th>
                   <th>Нотатка</th>
+                  <th>Вчасно</th>
                   <th style={{ width: 70 }}></th>
                 </tr>
               </thead>
@@ -271,11 +430,12 @@ export default function EmployeeDetail({
                 {years.map((yr) => {
                   const yrStr = String(yr);
                   const yrRecords = allPeriods.filter((r) => r.start_date!.startsWith(yrStr));
-                  if (yrRecords.length === 0) return null;
+                  const yrDaysSum = daysSumRecords.filter((r) => r.year === yr);
+                  if (yrRecords.length === 0 && yrDaysSum.length === 0) return null;
                   return (
-                    <>
+                    <React.Fragment key={yr}>
                       {/* Year separator */}
-                      <tr key={`sep-${yr}`}>
+                      <tr>
                         <td
                           colSpan={6}
                           style={{
@@ -291,15 +451,40 @@ export default function EmployeeDetail({
                           {yr}
                         </td>
                       </tr>
+                      {yrDaysSum.map((ds) => (
+                        <tr key={`ds-${ds.id}`} style={{ background: '#F5F5F7' }}>
+                          <td colSpan={3} style={{ fontStyle: 'italic', color: 'var(--text-secondary)', fontSize: 12 }}>
+                            Архівний підсумок {yr}: <strong>{ds.days_count} дн.</strong>
+                          </td>
+                          <td style={{ fontStyle: 'italic', color: 'var(--text-tertiary)', fontSize: 11 }}>
+                            {ds.vacation_type && ds.vacation_type !== 'main' ? ds.vacation_type.toUpperCase() : ''}
+                          </td>
+                          <td style={{ color: 'var(--text-tertiary)', fontSize: 11, fontStyle: 'italic' }}>{ds.note || '—'}</td>
+                          <td>—</td>
+                          <td>
+                            <div className="row-actions">
+                              <button className="btn btn-icon" onClick={() => onEditVacation?.(ds)}><Pencil size={13} /></button>
+                              <button className="btn btn-icon btn-danger" onClick={() => ds.id != null && onDeleteVacation?.(ds.id)}><Trash2 size={13} /></button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
                       {yrRecords.map((record) => (
-                        <tr key={record.id}>
+                        <tr key={record.id} style={(record as any).status === 'pending' ? { opacity: 0.7 } : (record as any).status === 'declined' ? { opacity: 0.5, textDecoration: 'line-through' } : undefined}>
                           <td>{record.start_date ? formatDate(record.start_date) : '—'}</td>
                           <td>{record.end_date ? formatDate(record.end_date) : '—'}</td>
                           <td style={{ fontWeight: 600 }}>
                             {record.days_count != null ? record.days_count : '—'}
+                            <StatusBadge record={record} />
                           </td>
                           <td>
-                            <WorkingYearBadge employee={employee} records={records} record={record} />
+                            {record.vacation_type === 'ubd' ? (
+                              <span className="balance-chip" style={{ background: '#E8DEF8', color: '#4A4458' }}>УБД</span>
+                            ) : record.vacation_type === 'social' ? (
+                              <span className="balance-chip" style={{ background: '#C2E7FF', color: '#004A77' }}>На дітей</span>
+                            ) : (
+                              <WorkingYearBadge employee={employee} records={records} record={record} />
+                            )}
                           </td>
                           <td
                             style={{
@@ -311,6 +496,24 @@ export default function EmployeeDetail({
                             }}
                           >
                             {record.note || '—'}
+                          </td>
+                          <td style={{ textAlign: 'center' }}>
+                            {record.record_type === 'period' ? (
+                              <button
+                                type="button"
+                                className="btn btn-icon"
+                                style={{ background: 'transparent', cursor: 'pointer' }}
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  if (!record.id) return;
+                                  const { toggleSubmittedOnTimeAction } = await import('@/lib/actions/vacationRecords');
+                                  await toggleSubmittedOnTimeAction(record.id, record.submitted_on_time ?? true);
+                                }}
+                                title="Документи подано вчасно"
+                              >
+                                {record.submitted_on_time ? '✅' : '❌'}
+                              </button>
+                            ) : '—'}
                           </td>
                           <td>
                             <div className="row-actions">
@@ -325,7 +528,7 @@ export default function EmployeeDetail({
                         </tr>
                       ))}
                       {/* Year total footer */}
-                      <tr key={`total-${yr}`}>
+                      <tr>
                         <td
                           colSpan={6}
                           style={{
@@ -339,7 +542,7 @@ export default function EmployeeDetail({
                           Всього {yr}: {yearTotals[yrStr] || 0} дн.
                         </td>
                       </tr>
-                    </>
+                    </React.Fragment>
                   );
                 })}
               </tbody>

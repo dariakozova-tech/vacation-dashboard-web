@@ -14,6 +14,14 @@ import {
   deleteEmployeeAction,
 } from '@/lib/actions/employees';
 import {
+  addEmployeeCategoryAction,
+  updateEmployeeCategoryAction,
+  deleteEmployeeCategoryAction,
+  addEmployeeChildAction,
+  updateEmployeeChildAction,
+  deleteEmployeeChildAction,
+} from '@/lib/actions/specialCategories';
+import {
   addVacationRecordAction,
   updateVacationRecordAction,
   deleteVacationRecordAction,
@@ -26,6 +34,8 @@ interface EmployeeRow {
   hire_date: string;
   is_deel?: boolean;
   email?: string | null;
+  is_single_parent?: boolean;
+  single_parent_since?: string | null;
   earned: number;
   used2024: number;
   used2025: number;
@@ -49,7 +59,7 @@ export default function AppShell({ employees, allRecords }: AppShellProps) {
 
   // Modal state
   const [employeeModal, setEmployeeModal] = useState<EmployeeRow | null | 'add'>(null);
-  const [vacationModal, setVacationModal] = useState<{ employeeId: number; record?: VacationRecordInput | null } | null>(null);
+  const [vacationModal, setVacationModal] = useState<{ employeeId: number; record?: VacationRecordInput | null; employee?: EmployeeRow } | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{ message: string; onConfirm: () => Promise<void> } | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -61,15 +71,58 @@ export default function AppShell({ employees, allRecords }: AppShellProps) {
     hireDate: string;
     email?: string | null;
     isDeel?: boolean;
+    annualBaseDays?: number;
+    isSingleParent?: boolean;
+    singleParentSince?: string | null;
+    categories?: any[];
+    children?: any[];
   }) => {
     setActionError(null);
     let result;
     if (data.id) {
-      result = await updateEmployeeAction(data as { id: number; fullName?: string; hireDate?: string; isDeel?: boolean; email?: string | null });
+      result = await updateEmployeeAction({
+        id: data.id,
+        fullName: data.fullName,
+        hireDate: data.hireDate,
+        email: data.email,
+        isDeel: data.isDeel,
+        annualBaseDays: data.annualBaseDays,
+        isSingleParent: data.isSingleParent,
+        singleParentSince: data.singleParentSince,
+      });
     } else {
-      result = await addEmployeeAction({ fullName: data.fullName, hireDate: data.hireDate, email: data.email, isDeel: data.isDeel });
+      result = await addEmployeeAction({
+        fullName: data.fullName,
+        hireDate: data.hireDate,
+        email: data.email,
+        isDeel: data.isDeel,
+        annualBaseDays: data.annualBaseDays,
+        isSingleParent: data.isSingleParent,
+        singleParentSince: data.singleParentSince,
+      });
     }
+
     if (result.success) {
+      const empId = data.id || result.data.id;
+
+      // Update categories
+      if (data.categories) {
+        for (const cat of data.categories) {
+          if (cat.delete && cat.id) await deleteEmployeeCategoryAction(cat.id);
+          else if (cat.id && !cat.delete) await updateEmployeeCategoryAction({ id: cat.id, category: cat.category, since: cat.since, effectiveTo: cat.effective_to, notes: cat.notes });
+          else if (!cat.id && !cat.delete) await addEmployeeCategoryAction({ employeeId: empId, category: cat.category, since: cat.since, effectiveTo: cat.effective_to, notes: cat.notes });
+        }
+      }
+
+      // Update children
+      if (data.children) {
+        for (const ch of data.children) {
+          if (ch.delete && ch.id) await deleteEmployeeChildAction(ch.id);
+          else if (ch.id && !ch.delete) await updateEmployeeChildAction({ id: ch.id, childName: ch.child_name, birthDate: ch.birth_date, isRaisedAlone: ch.is_raised_alone, notes: ch.notes });
+          else if (!ch.id && !ch.delete) await addEmployeeChildAction({ employeeId: empId, childName: ch.child_name, birthDate: ch.birth_date, isRaisedAlone: ch.is_raised_alone, notes: ch.notes });
+        }
+      }
+
       setEmployeeModal(null);
       startTransition(() => router.refresh());
     } else {
@@ -99,11 +152,13 @@ export default function AppShell({ employees, allRecords }: AppShellProps) {
     id?: number;
     employeeId: number;
     recordType: string;
+    vacationType?: string;
     startDate?: string | null;
     endDate?: string | null;
     daysCount?: number | null;
     year?: number | null;
     note?: string | null;
+    submittedOnTime?: boolean;
   }) => {
     setActionError(null);
     let result;
@@ -113,21 +168,25 @@ export default function AppShell({ employees, allRecords }: AppShellProps) {
         id,
         employeeId: rest.employeeId,
         recordType: rest.recordType as 'period' | 'days_sum' | 'balance_reset',
+        vacationType: rest.vacationType,
         startDate: rest.startDate,
         endDate: rest.endDate,
         daysCount: rest.daysCount,
         year: rest.year,
         note: rest.note,
+        submittedOnTime: rest.submittedOnTime,
       });
     } else {
       result = await addVacationRecordAction({
         employeeId: data.employeeId,
         recordType: data.recordType as 'period' | 'days_sum' | 'balance_reset',
+        vacationType: data.vacationType,
         startDate: data.startDate,
         endDate: data.endDate,
         daysCount: data.daysCount,
         year: data.year,
         note: data.note,
+        submittedOnTime: data.submittedOnTime,
       });
     }
     if (result.success) {
@@ -209,8 +268,14 @@ export default function AppShell({ employees, allRecords }: AppShellProps) {
               onAddEmployee={() => setEmployeeModal('add')}
               onEditEmployee={(emp) => setEmployeeModal(emp)}
               onDeleteEmployee={(emp) => handleDeleteEmployee(emp)}
-              onAddVacation={(employeeId) => setVacationModal({ employeeId })}
-              onEditVacation={(employeeId, record) => setVacationModal({ employeeId, record })}
+              onAddVacation={(employeeId) => {
+                const emp = employees.find(e => e.id === employeeId);
+                setVacationModal({ employeeId, employee: emp });
+              }}
+              onEditVacation={(employeeId, record) => {
+                const emp = employees.find(e => e.id === employeeId);
+                setVacationModal({ employeeId, record, employee: emp });
+              }}
               onDeleteVacation={(recordId) => handleDeleteVacation(recordId)}
             />
           ) : (
@@ -232,6 +297,8 @@ export default function AppShell({ employees, allRecords }: AppShellProps) {
           employeeId={vacationModal.employeeId}
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           record={(vacationModal.record ?? null) as any}
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          employee={(vacationModal.employee ?? null) as any}
           onSave={handleSaveVacation}
           onClose={() => { setVacationModal(null); setActionError(null); }}
         />

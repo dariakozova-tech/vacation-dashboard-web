@@ -34,3 +34,20 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Future Integrations
+
+### Sage HR API
+The Sage HR Swagger specification has been retrieved and saved to `/docs/sage-hr-api.yaml`. This acts as the source of truth for our upcoming integration.
+
+To configure the environment for local development or production, use the following variables in `.env.local`:
+```
+SAGE_HR_SUBDOMAIN="your-company"
+SAGE_HR_API_TOKEN="your-auth-token"
+```
+
+Endpoints to be integrated:
+- `GET /api/employees` — Sync active employee list
+- `GET /api/employees/{id}/leave-management/balances` — Fetch vacation balances
+- `GET /api/leave-management/policies` — Map time-off policies
+- `GET /api/leave-management/requests` — Sync approved leaves

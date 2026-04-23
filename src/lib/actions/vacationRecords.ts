@@ -45,3 +45,24 @@ export async function deleteVacationRecordAction(id: number): Promise<ActionResu
     return { success: false, error: e instanceof Error ? e.message : String(e) };
   }
 }
+
+export async function toggleSubmittedOnTimeAction(
+  id: number,
+  currentValue: boolean
+): Promise<ActionResult<void>> {
+  try {
+    const { eq } = await import('drizzle-orm');
+    const { db } = await import('@/lib/db');
+    const { vacationRecords } = await import('@/lib/db/schema');
+    
+    await db
+      .update(vacationRecords)
+      .set({ submittedOnTime: !currentValue })
+      .where(eq(vacationRecords.id, id));
+      
+    revalidatePath('/');
+    return { success: true, data: undefined };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}

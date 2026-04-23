@@ -32,7 +32,7 @@ async function fetchAndPrintBalance(empId: number, empName: string, empHireDate:
     note: r.note as string | null,
   }));
 
-  const balance = calculateEmployeeBalance(employee, vacRecords, AS_OF_DATE);
+  const balance = calculateEmployeeBalance(employee, vacRecords, [], [], AS_OF_DATE);
 
   console.log(`\n=== ${empName} (id=${empId}) ===`);
   console.log(`  hire_date:   ${empHireDate}`);

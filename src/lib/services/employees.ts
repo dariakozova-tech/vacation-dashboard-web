@@ -16,6 +16,9 @@ export async function addEmployee(data: {
   hireDate: string;
   isDeel?: boolean;
   email?: string | null;
+  annualBaseDays?: number;
+  isSingleParent?: boolean;
+  singleParentSince?: string | null;
 }) {
   const [row] = await db.insert(employees).values(data).returning();
   return row;
@@ -28,6 +31,9 @@ export async function updateEmployee(data: {
   isActive?: boolean;
   isDeel?: boolean;
   email?: string | null;
+  annualBaseDays?: number;
+  isSingleParent?: boolean;
+  singleParentSince?: string | null;
 }) {
   const { id, ...rest } = data;
   const [row] = await db
@@ -39,6 +45,6 @@ export async function updateEmployee(data: {
 }
 
 export async function deleteEmployee(id: number) {
-  // PostgreSQL ON DELETE CASCADE (DB-04) handles vacation_records automatically
+  // PostgreSQL ON DELETE CASCADE handles vacation_records automatically
   await db.delete(employees).where(eq(employees.id, id));
 }

@@ -107,7 +107,23 @@ export default function AnalyticsTab({ employees, allRecords }: AnalyticsTabProp
     const noVacation2026 = filteredEmployees.filter((e: any) => !e.used2026 || e.used2026 === 0).length;
     const pctNoVac = filteredEmployees.length ? Math.round((noVacation2026 / filteredEmployees.length) * 100) : 0;
 
-    return { totalUnused, avgBalance: Math.round(avgBalance * 10) / 10, negCount, pctNoVac, noVacation2026 };
+    // Pool B — UBD (current calendar year only)
+    const ubdEmployees = filteredEmployees.filter((e: any) => e.ubdBalance?.entitled > 0);
+    const ubdCount = ubdEmployees.length;
+    const ubdTotal = ubdEmployees.reduce((s: number, e: any) => s + (e.ubdBalance?.entitled || 0), 0);
+    const ubdRemaining = ubdEmployees.reduce((s: number, e: any) => s + (e.ubdBalance?.remaining || 0), 0);
+
+    // Pool C — Social (cumulative)
+    const socialEmployees = filteredEmployees.filter((e: any) => e.socialBalance?.totalEarned > 0);
+    const socialCount = socialEmployees.length;
+    const socialRemaining = socialEmployees.reduce((s: number, e: any) => s + (e.socialBalance?.remaining || 0), 0);
+    const socialTotal = socialEmployees.reduce((s: number, e: any) => s + (e.socialBalance?.totalEarned || 0), 0);
+
+    return {
+      totalUnused, avgBalance: Math.round(avgBalance * 10) / 10, negCount, pctNoVac, noVacation2026,
+      ubdCount, ubdTotal, ubdRemaining,
+      socialCount, socialTotal, socialRemaining,
+    };
   }, [filteredEmployees]);
 
   // ── Monthly usage (current year, from period records) ─────────────────────
@@ -178,7 +194,7 @@ export default function AnalyticsTab({ employees, allRecords }: AnalyticsTabProp
   // ── Forecast table ─────────────────────────────────────────────────────────
   const forecastData = useMemo(() => {
     return filteredEmployees.map((emp: any) => {
-      const balanceAtDate = calculateEmployeeBalance(emp, emp.records || [], forecastDate);
+      const balanceAtDate = calculateEmployeeBalance(emp, emp.records || [], emp.categories || [], emp.children || [], forecastDate);
       const usedTotal = balanceAtDate.used2024 + balanceAtDate.used2025 + balanceAtDate.used2026;
       return {
         id: emp.id,
@@ -220,12 +236,12 @@ export default function AnalyticsTab({ employees, allRecords }: AnalyticsTabProp
         </span>
       </div>
 
-      {/* KPI Cards */}
+      {/* KPI Cards — Pool A */}
       <div className="kpi-grid">
         <KpiCard
-          label="Загальний залишок"
+          label="Основна — залишок"
           value={`${kpi.totalUnused} дн.`}
-          sub="Сума позитивних балансів"
+          sub="Сума позитивних балансів (Pool A)"
           valueClass="accent"
         />
         <KpiCard
@@ -246,6 +262,28 @@ export default function AnalyticsTab({ employees, allRecords }: AnalyticsTabProp
           valueClass={kpi.pctNoVac > 50 ? 'warning' : 'success'}
         />
       </div>
+
+      {/* KPI Cards — Pool B & C */}
+      {(kpi.ubdTotal > 0 || kpi.socialTotal > 0) && (
+        <div className="kpi-grid" style={{ marginTop: 12 }}>
+          {kpi.ubdTotal > 0 && (
+            <KpiCard
+              label={`УБД — залишок ${currentYear}`}
+              value={`${kpi.ubdRemaining} / ${kpi.ubdTotal} дн.`}
+              sub={`${kpi.ubdCount} осіб · згорає 31.12.${currentYear}`}
+              valueClass="warning"
+            />
+          )}
+          {kpi.socialTotal > 0 && (
+            <KpiCard
+              label="Соціальна — залишок"
+              value={`${kpi.socialRemaining} дн.`}
+              sub={`${kpi.socialCount} осіб · накопичується`}
+              valueClass="accent"
+            />
+          )}
+        </div>
+      )}
 
       {/* Charts row 1 */}
       <div className="charts-grid">

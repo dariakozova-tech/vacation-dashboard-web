@@ -9,6 +9,12 @@ const RECORD_TYPES = [
   { value: 'days_sum', label: 'Сума днів' },
 ];
 
+const ALL_VACATION_TYPES = [
+  { value: 'main', label: 'Основна відпустка' },
+  { value: 'ubd', label: 'УБД (додаткова)' },
+  { value: 'social', label: 'Соціальна (діти)' },
+];
+
 const YEARS = [2024, 2025, 2026];
 
 interface VacationModalProps {
@@ -16,29 +22,48 @@ interface VacationModalProps {
   record?: {
     id: number;
     record_type: string;
+    vacation_type?: string;
     start_date?: string | null;
     end_date?: string | null;
     days_count?: number | null;
     year?: number | null;
     note?: string | null;
+    submitted_on_time?: boolean;
+  } | null;
+  employee?: {
+    categories?: { category: string }[];
+    socialBalance?: { totalEarned: number };
+    ubdBalance?: { entitled: number };
+    [key: string]: unknown;
   } | null;
   onSave: (data: {
     id?: number;
     employeeId: number;
     recordType: string;
+    vacationType?: string;
     startDate?: string | null;
     endDate?: string | null;
     daysCount?: number | null;
     year?: number | null;
     note?: string | null;
+    submittedOnTime?: boolean;
   }) => void;
   onClose: () => void;
 }
 
-export default function VacationModal({ employeeId, record, onSave, onClose }: VacationModalProps) {
+export default function VacationModal({ employeeId, record, employee, onSave, onClose }: VacationModalProps) {
   const isEdit = !!(record && record.id);
 
+  // Filter vacation types based on employee eligibility
+  const availableVacationTypes = ALL_VACATION_TYPES.filter(vt => {
+    if (vt.value === 'main') return true;
+    if (vt.value === 'ubd') return employee?.ubdBalance?.entitled && employee.ubdBalance.entitled > 0;
+    if (vt.value === 'social') return employee?.socialBalance?.totalEarned && employee.socialBalance.totalEarned > 0;
+    return false;
+  });
+
   const [recordType, setRecordType] = useState(record?.record_type || 'period');
+  const [vacationType, setVacationType] = useState(record?.vacation_type || 'main');
   const [startDate, setStartDate] = useState(record?.start_date || '');
   const [endDate, setEndDate] = useState(record?.end_date || '');
   const [daysCount, setDaysCount] = useState(
@@ -46,6 +71,7 @@ export default function VacationModal({ employeeId, record, onSave, onClose }: V
   );
   const [year, setYear] = useState(record?.year ? String(record.year) : '2026');
   const [note, setNote] = useState(record?.note || '');
+  const [submittedOnTime, setSubmittedOnTime] = useState(record?.submitted_on_time ?? true);
   const [errors, setErrors] = useState<Record<string, string | null>>({});
 
   // Auto-calculate days when period dates change
@@ -90,11 +116,13 @@ export default function VacationModal({ employeeId, record, onSave, onClose }: V
       ...(isEdit ? { id: record!.id } : {}),
       employeeId,
       recordType,
+      vacationType: recordType === 'period' ? vacationType : 'main',
       startDate: recordType === 'period' ? startDate : null,
       endDate: recordType === 'period' ? endDate : null,
       daysCount: daysCount ? parseFloat(daysCount) : null,
       year: recordType === 'days_sum' ? parseInt(year) : null,
       note: note.trim() || null,
+      submittedOnTime: recordType === 'period' ? submittedOnTime : true,
     });
   };
 
@@ -134,6 +162,20 @@ export default function VacationModal({ employeeId, record, onSave, onClose }: V
           {/* Period fields */}
           {recordType === 'period' && (
             <>
+              {/* Vacation Type */}
+              <div className="form-group">
+                <label className="form-label">Вид відпустки *</label>
+                <select
+                  className="form-input form-select"
+                  value={vacationType}
+                  onChange={e => setVacationType(e.target.value)}
+                >
+                  {availableVacationTypes.map(vt => (
+                    <option key={vt.value} value={vt.value}>{vt.label}</option>
+                  ))}
+                </select>
+              </div>
+
               <div className="date-range-row">
                 <div className="form-group">
                   <label className="form-label">Дата початку *</label>
@@ -223,10 +265,26 @@ export default function VacationModal({ employeeId, record, onSave, onClose }: V
               className="form-input"
               value={note}
               onChange={e => setNote(e.target.value)}
-              placeholder="Наприклад: щорічна відпустка, лікарняний..."
+              placeholder="Наприклад: лікарняний, сімейні обставини..."
               rows={2}
             />
           </div>
+
+          {/* Timely Submission (only for period) */}
+          {recordType === 'period' && (
+            <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: -4, marginBottom: 16 }}>
+              <input
+                type="checkbox"
+                id="submittedOnTime"
+                checked={submittedOnTime}
+                onChange={e => setSubmittedOnTime(e.target.checked)}
+                style={{ width: 16, height: 16, cursor: 'pointer', accentColor: 'var(--accent)' }}
+              />
+              <label htmlFor="submittedOnTime" style={{ fontSize: 13, cursor: 'pointer', margin: 0, userSelect: 'none' }}>
+                Документи подано вчасно
+              </label>
+            </div>
+          )}
 
           {/* Auto-calculated preview */}
           {recordType === 'period' && daysCount && startDate && endDate && (
