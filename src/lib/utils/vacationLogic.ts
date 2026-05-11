@@ -312,8 +312,10 @@ export function calculateEmployeeBalance(
   const usedBeforeReset = calculateUsedDays(records, epoch, start2026)
   const balanceAtReset = earnedToReset - usedBeforeReset
 
-  const wasReset = balanceAtReset < 0
-  const resetDays = wasReset ? Math.abs(balanceAtReset) : 0
+  // wasReset is driven by actual balance_reset records in DB, not computed
+  const hasBalanceResetRecord = records.some(r => r.record_type === 'balance_reset')
+  const wasReset = hasBalanceResetRecord
+  const resetDays = wasReset ? Math.abs(Math.min(balanceAtReset, 0)) : 0
 
   // Total earned
   const totalEarned = wasReset
