@@ -79,8 +79,8 @@ export function calculateUsedDays(
   return records.reduce((total, record) => {
     if (record.record_type === 'balance_reset') return total
 
-    // Pending records do not affect balance
-    if (record.status === 'pending') return total
+    // Only approved records affect balance
+    if (record.status === 'pending' || record.status === 'declined') return total
 
     // Skip special vacations from Pool A balance
     if (record.vacation_type === 'ubd' || record.vacation_type === 'social') return total
@@ -119,7 +119,7 @@ export function getUBDEntitlement(categories: EmployeeCategoryInput[]): number {
  */
 export function getUBDUsed(records: VacationRecordInput[], year: number): number {
   return records
-    .filter(r => r.vacation_type === 'ubd' && r.status !== 'pending' && getRecordYear(r) === year)
+    .filter(r => r.vacation_type === 'ubd' && r.status !== 'pending' && r.status !== 'declined' && getRecordYear(r) === year)
     .reduce((sum, r) => sum + (r.days_count ?? 0), 0)
 }
 
@@ -219,7 +219,7 @@ export function getTotalSocialEarned(
  */
 export function getSocialUsed(records: VacationRecordInput[]): number {
   return records
-    .filter(r => r.vacation_type === 'social' && r.status !== 'pending')
+    .filter(r => r.vacation_type === 'social' && r.status !== 'pending' && r.status !== 'declined')
     .reduce((sum, r) => sum + (r.days_count ?? 0), 0)
 }
 

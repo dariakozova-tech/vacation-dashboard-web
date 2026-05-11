@@ -1,6 +1,6 @@
 import { db } from '@/lib/db';
 import { employees, vacationRecords, sageSyncLog } from '@/lib/db/schema';
-import { eq, and, gte, isNull, sql } from 'drizzle-orm';
+import { eq, and, isNull, sql } from 'drizzle-orm';
 import { sageGetAll } from './client';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -26,6 +26,10 @@ export interface Discrepancy {
   calendar_days?: number;
 }
 
+export interface ImportOptions {
+  daysBack?: number; // if set, only fetch last N days instead of full history
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function calendarDays(startDate: string, endDate: string): number {
@@ -44,12 +48,17 @@ export function displayStatus(sageStatus: string, isDeel: boolean): string {
   return map[sageStatus.toLowerCase()] ?? sageStatus;
 }
 
-// ── 6a: Map Sage employees by email ─────────────────────────────────────────
+// ── Map Sage employees by email + name fallback ─────────────────────────────
 
-export async function mapSageEmployees(): Promise<{ mapped: number; total: number }> {
+export async function mapSageEmployees(): Promise<{
+  mapped: number;
+  total: number;
+  sageEmployees: { id: number; firstName: string; lastName: string; email: string }[];
+}> {
   const sageEmployees = await sageGetAll('/employees');
   let mapped = 0;
 
+  // First pass: match by email
   for (const se of sageEmployees) {
     const email = se.email?.toLowerCase().trim();
     if (!email || !se.id) continue;
@@ -68,16 +77,61 @@ export async function mapSageEmployees(): Promise<{ mapped: number; total: numbe
     if (result.length > 0) mapped++;
   }
 
-  return { mapped, total: sageEmployees.length };
+  // Second pass: try name matching for still-unmapped employees
+  const unmapped = await db
+    .select()
+    .from(employees)
+    .where(and(isNull(employees.sageEmployeeId), eq(employees.isActive, true)));
+
+  for (const emp of unmapped) {
+    // Try matching by English name parts
+    const nameParts = emp.fullName.toLowerCase().split(' ');
+    const match = sageEmployees.find((se: any) => {
+      const sageFirst = (se.first_name || '').toLowerCase();
+      const sageLast = (se.last_name || '').toLowerCase();
+      return nameParts.some((p: string) => p === sageFirst || p === sageLast) &&
+        nameParts.some((p: string) => p !== sageFirst && (p === sageLast || p === sageFirst));
+    });
+
+    if (match) {
+      await db
+        .update(employees)
+        .set({ sageEmployeeId: match.id })
+        .where(eq(employees.id, emp.id));
+      mapped++;
+      console.log(`  Name-matched: ${emp.fullName} → Sage ID ${match.id} (${match.first_name} ${match.last_name})`);
+    }
+  }
+
+  return {
+    mapped,
+    total: sageEmployees.length,
+    sageEmployees: sageEmployees.map((se: any) => ({
+      id: se.id,
+      firstName: se.first_name,
+      lastName: se.last_name,
+      email: se.email,
+    })),
+  };
 }
 
-// ── 6b: Fetch all leave requests in 60-day chunks ───────────────────────────
+// ── Fetch all leave requests in 60-day chunks ───────────────────────────────
 
-const FROM_DATE = '2023-08-01';
+const DEFAULT_FROM_DATE = '2023-08-01';
 
-export async function fetchAllLeaveRequests(): Promise<SageLeaveRequest[]> {
+export async function fetchAllLeaveRequests(options?: ImportOptions): Promise<SageLeaveRequest[]> {
   const requests: SageLeaveRequest[] = [];
-  let from = new Date(FROM_DATE);
+
+  let fromDate: string;
+  if (options?.daysBack) {
+    const d = new Date();
+    d.setDate(d.getDate() - options.daysBack);
+    fromDate = d.toISOString().split('T')[0];
+  } else {
+    fromDate = DEFAULT_FROM_DATE;
+  }
+
+  let from = new Date(fromDate);
   const today = new Date();
 
   while (from < today) {
@@ -88,20 +142,34 @@ export async function fetchAllLeaveRequests(): Promise<SageLeaveRequest[]> {
     const fromStr = from.toISOString().split('T')[0];
     const toStr = to.toISOString().split('T')[0];
 
-    const data = await sageGetAll(
-      `/leave-management/requests?from=${fromStr}&to=${toStr}`
-    );
-    requests.push(...data);
+    try {
+      const data = await sageGetAll(
+        `/leave-management/requests?from=${fromStr}&to=${toStr}`
+      );
+      requests.push(...data);
+    } catch (err) {
+      console.error(`Sage API error for ${fromStr}–${toStr}:`, err);
+    }
 
     from = new Date(to);
     from.setDate(from.getDate() + 1);
   }
 
   // Deduplicate by id
-  return [...new Map(requests.map((r) => [r.id, r])).values()];
+  const deduped = [...new Map(requests.map((r) => [r.id, r])).values()];
+
+  // Log count per year
+  const byYear: Record<string, number> = {};
+  for (const req of deduped) {
+    const y = req.start_date?.substring(0, 4) ?? 'unknown';
+    byYear[y] = (byYear[y] || 0) + 1;
+  }
+  console.log('Sage requests by year:', byYear);
+
+  return deduped;
 }
 
-// ── 6e: Discrepancy report ──────────────────────────────────────────────────
+// ── Discrepancy report ──────────────────────────────────────────────────────
 
 export async function generateDiscrepancyReport(): Promise<Discrepancy[]> {
   const discrepancies: Discrepancy[] = [];
@@ -111,13 +179,11 @@ export async function generateDiscrepancyReport(): Promise<Discrepancy[]> {
     ['approved', 'pending'].includes(r.status_code?.toLowerCase())
   );
 
-  // Get all employees with sage mapping
   const allEmployees = await db.select().from(employees);
   const empBySageId = new Map(
     allEmployees.filter((e) => e.sageEmployeeId).map((e) => [e.sageEmployeeId!, e])
   );
 
-  // Get all vacation records
   const allRecords = await db.select().from(vacationRecords);
 
   for (const req of relevant) {
@@ -191,16 +257,18 @@ export async function generateDiscrepancyReport(): Promise<Discrepancy[]> {
   return discrepancies;
 }
 
-// ── 7: Import approved & pending records ────────────────────────────────────
+// ── Import approved & pending records ────────────────────────────────────────
 
-export async function importSageRecords(): Promise<{
+export async function importSageRecords(options?: ImportOptions): Promise<{
   added: number;
   updated: number;
+  errors: string[];
   discrepancies: Discrepancy[];
 }> {
-  const allRequests = await fetchAllLeaveRequests();
+  const allRequests = await fetchAllLeaveRequests(options);
   let added = 0;
   let updated = 0;
+  const errors: string[] = [];
 
   const allEmployees = await db.select().from(employees);
   const empBySageId = new Map(
@@ -214,49 +282,57 @@ export async function importSageRecords(): Promise<{
     const emp = empBySageId.get(req.employee_id);
     if (!emp) continue;
 
-    const calDays = calendarDays(req.start_date, req.end_date);
-    const year = new Date(req.start_date).getFullYear();
+    try {
+      const calDays = calendarDays(req.start_date, req.end_date);
+      const year = new Date(req.start_date).getFullYear();
 
-    // Check if already exists by sage_id
-    const existing = await db
-      .select()
-      .from(vacationRecords)
-      .where(eq(vacationRecords.sageId, req.id))
-      .then((rows) => rows[0]);
+      const existing = await db
+        .select()
+        .from(vacationRecords)
+        .where(eq(vacationRecords.sageId, req.id))
+        .then((rows) => rows[0]);
 
-    if (existing) {
-      await db
-        .update(vacationRecords)
-        .set({ status, daysCount: calDays })
-        .where(eq(vacationRecords.sageId, req.id));
-      updated++;
-    } else {
-      await db.insert(vacationRecords).values({
-        employeeId: emp.id,
-        recordType: 'period',
-        startDate: req.start_date,
-        endDate: req.end_date,
-        daysCount: calDays,
-        year,
-        status,
-        source: 'sage',
-        sageId: req.id,
-        vacationType: 'main',
-        submittedOnTime: false,
-      });
-      added++;
+      if (existing) {
+        await db
+          .update(vacationRecords)
+          .set({ status, daysCount: calDays })
+          .where(eq(vacationRecords.sageId, req.id));
+        updated++;
+      } else {
+        await db.insert(vacationRecords).values({
+          employeeId: emp.id,
+          recordType: 'period',
+          startDate: req.start_date,
+          endDate: req.end_date,
+          daysCount: calDays,
+          year,
+          status,
+          source: 'sage',
+          sageId: req.id,
+          vacationType: 'main',
+          submittedOnTime: false,
+        });
+        added++;
+      }
+    } catch (err) {
+      const msg = `Failed to import sage_id=${req.id} for ${emp.fullName}: ${err}`;
+      console.error(msg);
+      errors.push(msg);
     }
   }
 
   // Log the sync
-  const discrepancies = await generateDiscrepancyReport();
+  const discrepancies = options?.daysBack ? [] : await generateDiscrepancyReport().catch(() => []);
   await db.insert(sageSyncLog).values({
     recordsAdded: added,
     recordsUpdated: updated,
-    discrepancies: discrepancies as any,
+    discrepancies: discrepancies.length > 0 ? (discrepancies as any) : null,
+    errors: errors.length > 0 ? (errors as any) : null,
   });
 
-  return { added, updated, discrepancies };
+  console.log(`Sage sync: ${added} added, ${updated} updated, ${errors.length} errors`);
+
+  return { added, updated, errors, discrepancies };
 }
 
 // ── Verification query ──────────────────────────────────────────────────────

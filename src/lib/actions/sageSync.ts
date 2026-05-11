@@ -21,6 +21,7 @@ export async function generateReportAction(): Promise<
     const report = await generateDiscrepancyReport();
     return { success: true, data: report };
   } catch (e) {
+    console.error('generateReportAction error:', e);
     return { success: false, error: e instanceof Error ? e.message : String(e) };
   }
 }
@@ -33,6 +34,7 @@ export async function runImportAction(): Promise<
     revalidatePath('/');
     return { success: true, data: result };
   } catch (e) {
+    console.error('runImportAction error:', e);
     return { success: false, error: e instanceof Error ? e.message : String(e) };
   }
 }
@@ -42,8 +44,9 @@ export async function mapEmployeesAction(): Promise<
 > {
   try {
     const result = await mapSageEmployees();
-    return { success: true, data: result };
+    return { success: true, data: { mapped: result.mapped, total: result.total } };
   } catch (e) {
+    console.error('mapEmployeesAction error:', e);
     return { success: false, error: e instanceof Error ? e.message : String(e) };
   }
 }
@@ -60,6 +63,7 @@ export async function getCoverageAction(): Promise<
     const result = await getMappingCoverage();
     return { success: true, data: result };
   } catch (e) {
+    console.error('getCoverageAction error:', e);
     return { success: false, error: e instanceof Error ? e.message : String(e) };
   }
 }
@@ -67,8 +71,9 @@ export async function getCoverageAction(): Promise<
 export async function getLastSyncAction() {
   try {
     const log = await getLastSyncLog();
-    return { success: true, data: log };
+    return { success: true as const, data: log };
   } catch (e) {
-    return { success: false, error: e instanceof Error ? e.message : String(e) };
+    console.error('getLastSyncAction error:', e);
+    return { success: false as const, error: e instanceof Error ? e.message : String(e) };
   }
 }

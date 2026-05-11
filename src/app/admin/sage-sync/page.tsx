@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   generateReportAction,
   runImportAction,
@@ -35,6 +35,13 @@ export default function SageSyncPage() {
   const [loading, setLoading] = useState('');
   const [error, setError] = useState<string | null>(null);
 
+  // Load last sync on mount
+  useEffect(() => {
+    getLastSyncAction().then((result) => {
+      if (result.success) setLastSync(result.data as LastSync);
+    });
+  }, []);
+
   const handleGenerateReport = async () => {
     setLoading('report');
     setError(null);
@@ -55,6 +62,9 @@ export default function SageSyncPage() {
     if (result.success) {
       setImportResult({ added: result.data.added, updated: result.data.updated });
       setReport(result.data.discrepancies);
+      // Refresh last sync
+      const syncResult = await getLastSyncAction();
+      if (syncResult.success) setLastSync(syncResult.data as LastSync);
     } else {
       setError(result.error);
     }
@@ -67,6 +77,9 @@ export default function SageSyncPage() {
     const result = await mapEmployeesAction();
     if (result.success) {
       alert(`Mapped ${result.data.mapped} new employees (${result.data.total} total in Sage)`);
+      // Auto-refresh coverage
+      const covResult = await getCoverageAction();
+      if (covResult.success) setCoverage(covResult.data);
     } else {
       setError(result.error);
     }
@@ -85,18 +98,11 @@ export default function SageSyncPage() {
     setLoading('');
   };
 
-  const handleGetLastSync = async () => {
-    const result = await getLastSyncAction();
-    if (result.success) {
-      setLastSync(result.data as LastSync);
-    }
-  };
-
   const discrepancyTypeLabel = (type: string) => {
     switch (type) {
       case 'in_sage_only': return 'Тільки в Sage';
       case 'in_dashboard_only': return 'Тільки в дашборді';
-      case 'day_count_mismatch': return 'Розбіжність днів';
+      case 'day_count_mismatch': return 'Розбіжність у днях';
       default: return type;
     }
   };
@@ -135,36 +141,45 @@ export default function SageSyncPage() {
       <div style={{ display: 'flex', gap: 10, marginBottom: 24, flexWrap: 'wrap' }}>
         <button
           onClick={handleMapEmployees}
-          disabled={loading === 'map'}
+          disabled={!!loading}
           style={btnStyle}
         >
           {loading === 'map' ? 'Mapping...' : 'Map Employees by Email'}
         </button>
         <button
           onClick={handleGetCoverage}
-          disabled={loading === 'coverage'}
+          disabled={!!loading}
           style={btnStyle}
         >
           {loading === 'coverage' ? 'Loading...' : 'Check Coverage'}
         </button>
         <button
           onClick={handleGenerateReport}
-          disabled={loading === 'report'}
+          disabled={!!loading}
           style={{ ...btnStyle, background: '#1D1D1F', color: '#fff' }}
         >
           {loading === 'report' ? 'Generating...' : 'Generate Report'}
         </button>
         <button
           onClick={handleImport}
-          disabled={loading === 'import' || !report}
+          disabled={!!loading || !report}
           style={{ ...btnStyle, background: report ? '#34C759' : '#ccc', color: '#fff' }}
         >
           {loading === 'import' ? 'Importing...' : 'Run Import'}
         </button>
-        <button onClick={handleGetLastSync} style={{ ...btnStyle, background: '#F5F5F7' }}>
-          Last Sync
-        </button>
       </div>
+
+      {/* Last sync */}
+      {lastSync && (
+        <div style={{ marginBottom: 24, padding: 16, background: '#F5F5F7', borderRadius: 10 }}>
+          <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>Останній синк</h3>
+          <div style={{ fontSize: 13 }}>
+            Дата: <strong>{new Date(lastSync.syncedAt).toLocaleString('uk-UA')}</strong> &nbsp;|&nbsp;
+            Додано: {lastSync.recordsAdded} &nbsp;|&nbsp;
+            Оновлено: {lastSync.recordsUpdated}
+          </div>
+        </div>
+      )}
 
       {/* Coverage */}
       {coverage && (
@@ -192,20 +207,8 @@ export default function SageSyncPage() {
         <div style={{ marginBottom: 24, padding: 16, background: '#E8F5E9', borderRadius: 10 }}>
           <h3 style={{ fontSize: 14, fontWeight: 600, color: '#2E7D32', marginBottom: 4 }}>Import Complete</h3>
           <div style={{ fontSize: 13 }}>
-            Added: <strong>{importResult.added}</strong> &nbsp;|&nbsp;
-            Updated: <strong>{importResult.updated}</strong>
-          </div>
-        </div>
-      )}
-
-      {/* Last sync */}
-      {lastSync && (
-        <div style={{ marginBottom: 24, padding: 16, background: '#F5F5F7', borderRadius: 10 }}>
-          <h3 style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>Last Sync</h3>
-          <div style={{ fontSize: 13 }}>
-            Date: <strong>{new Date(lastSync.syncedAt).toLocaleString('uk-UA')}</strong> &nbsp;|&nbsp;
-            Added: {lastSync.recordsAdded} &nbsp;|&nbsp;
-            Updated: {lastSync.recordsUpdated}
+            Додано: <strong>{importResult.added}</strong> &nbsp;|&nbsp;
+            Оновлено: <strong>{importResult.updated}</strong>
           </div>
         </div>
       )}
@@ -213,13 +216,21 @@ export default function SageSyncPage() {
       {/* Discrepancy report */}
       {grouped && (
         <div>
-          <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12 }}>
-            Discrepancy Report ({report!.length} items)
-          </h2>
+          {/* Summary */}
+          <div style={{ marginBottom: 16, padding: 16, background: '#F0F4FF', borderRadius: 10, border: '1px solid #D0D7F7' }}>
+            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
+              Знайдено розбіжностей: {report!.length}
+            </div>
+            <div style={{ fontSize: 13, color: '#1D1D1F', display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+              <span>Тільки в Sage: <strong>{grouped.in_sage_only.length}</strong> записів</span>
+              <span>Тільки в дашборді: <strong>{grouped.in_dashboard_only.length}</strong> записів</span>
+              <span>Розбіжність у днях: <strong>{grouped.day_count_mismatch.length}</strong> записів</span>
+            </div>
+          </div>
 
           {report!.length === 0 && (
             <div style={{ padding: 20, textAlign: 'center', color: '#6E6E73', fontSize: 13 }}>
-              No discrepancies found
+              Розбіжностей не знайдено
             </div>
           )}
 
@@ -234,6 +245,7 @@ export default function SageSyncPage() {
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                   <thead>
                     <tr style={{ background: '#F5F5F7' }}>
+                      <th style={thStyle}>Type</th>
                       <th style={thStyle}>Employee</th>
                       <th style={thStyle}>Start Date</th>
                       <th style={thStyle}>End Date</th>
@@ -245,6 +257,7 @@ export default function SageSyncPage() {
                   <tbody>
                     {items.map((d, i) => (
                       <tr key={i} style={{ background: discrepancyTypeColor(type) }}>
+                        <td style={tdStyle}>{discrepancyTypeLabel(d.type)}</td>
                         <td style={tdStyle}>{d.employee}</td>
                         <td style={tdStyle}>{d.start_date}</td>
                         <td style={tdStyle}>{d.end_date ?? '—'}</td>
