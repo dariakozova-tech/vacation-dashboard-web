@@ -1,0 +1,68 @@
+swagger: '2.0'
+info:
+  version: '1.0'
+  title: "Sage HR API"
+  description: 'Truncated for brevity. Includes key endpoints.'
+host: subdomain.sage.hr
+basePath: /api
+schemes:
+  - https
+consumes:
+  - application/json
+produces:
+  - application/json
+
+paths:
+  /employees:
+    x-summary: Employees
+    get:
+      summary: List active employees in company
+      tags:
+        - Employee
+      # Truncated responses
+
+  /employees/{id}/leave-management/balances:
+    x-summary: Employee time off balances
+    get:
+      summary: Employee time off balances
+      tags:
+        - Leave management
+        - Employee
+      parameters:
+        - in: path
+          name: id
+          type: integer
+          required: true
+          description: Numeric ID of the user to get.
+        - name: X-Auth-Token
+          in: header
+          description: an authorization header
+          required: true
+          type: string
+      responses:
+        '200':
+          description: Successful Response
+
+  /leave-management/requests:
+    x-summary: Time off requests
+    get:
+      summary: List time off requests
+      tags:
+        - Leave management
+      parameters:
+        - name: page
+          in: query
+          type: integer
+      responses:
+        '200':
+          description: Successful Response
+
+  /leave-management/policies:
+    x-summary: Time off policies
+    get:
+      summary: List time off policies
+      tags:
+        - Leave management
+      responses:
+        '200':
+          description: Successful Response

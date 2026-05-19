@@ -298,3 +298,4 @@ const tdStyle: React.CSSProperties = {
   padding: '6px 10px',
   borderBottom: '1px solid #E5E5EA',
 };
+
