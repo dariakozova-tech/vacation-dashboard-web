@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/cron/sage-sync",
-      "schedule": "0 9,15 * * *"
+      "schedule": "0 9 * * *"
     }
   ]
 }
