@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { importSageRecords } from '@/lib/sage-hr/sync';
+import { importSageRecords, syncChildrenFromSage } from '@/lib/sage-hr/sync';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -12,14 +12,17 @@ export async function GET(request: Request) {
 
   try {
     const result = await importSageRecords({ daysBack: 90 });
+    const childrenResult = await syncChildrenFromSage();
 
     console.log(`Cron sage-sync: ${result.added} added, ${result.updated} updated`);
+    console.log(`Cron children-sync: ${childrenResult.added} added, ${childrenResult.updated} updated`);
 
     return NextResponse.json({
       success: true,
       added: result.added,
       updated: result.updated,
       errors: result.errors,
+      children: childrenResult,
       timestamp: new Date().toISOString(),
     });
   } catch (error) {

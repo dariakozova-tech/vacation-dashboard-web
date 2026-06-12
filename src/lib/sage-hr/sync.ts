@@ -1,7 +1,7 @@
 import { db } from '@/lib/db';
-import { employees, vacationRecords, sageSyncLog } from '@/lib/db/schema';
-import { eq, and, isNull, sql } from 'drizzle-orm';
-import { sageGetAll } from './client';
+import { employees, vacationRecords, sageSyncLog, employeeChildren } from '@/lib/db/schema';
+import { eq, and, isNull, isNotNull, sql } from 'drizzle-orm';
+import { sageGetAll, sageGet } from './client';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -366,4 +366,105 @@ export async function getLastSyncLog() {
     .orderBy(sql`${sageSyncLog.syncedAt} DESC`)
     .limit(1);
   return rows[0] ?? null;
+}
+
+// ── Sync children from Sage HR ──────────────────────────────────────────
+
+interface SageChild {
+  id: number;
+  full_name: string;
+  relation: string;
+  birth_date: string;
+  with_needs: boolean;
+  due_date: string | null;
+  adoption_date: string | null;
+  date_of_death: string | null;
+}
+
+export async function syncChildrenFromSage(): Promise<{
+  added: number;
+  updated: number;
+  skipped: number;
+  errors: string[];
+}> {
+  let added = 0;
+  let updated = 0;
+  let skipped = 0;
+  const errors: string[] = [];
+
+  // Get all employees with sage_employee_id
+  const allEmployees = await db
+    .select()
+    .from(employees)
+    .where(isNotNull(employees.sageEmployeeId));
+
+  // Get all existing children to avoid duplicates
+  const existingChildren = await db.select().from(employeeChildren);
+
+  for (const emp of allEmployees) {
+    const sageId = emp.sageEmployeeId!;
+
+    try {
+      const response = await sageGet(`/employees/${sageId}/children`);
+      const sageChildren: SageChild[] = response.data ?? [];
+
+      if (sageChildren.length === 0) continue;
+
+      // Find existing children for this employee
+      const empChildren = existingChildren.filter(c => c.employeeId === emp.id);
+
+      for (const sc of sageChildren) {
+        if (!sc.birth_date) {
+          skipped++;
+          continue;
+        }
+
+        // Match by employee_id + birth_date
+        const existing = empChildren.find(c => c.birthDate === sc.birth_date);
+
+        // For non-Deel employees: store English name in notes, leave childName for Ukrainian
+        // For Deel employees: use English name directly
+        const sageName = sc.full_name?.trim() || null;
+        const sageNote = sageName ? `Sage: ${sageName}` : null;
+
+        if (existing) {
+          // Update if notes differ (new Sage name) or name was empty and this is Deel
+          const needsUpdate =
+            (sageNote && existing.notes !== sageNote) ||
+            (emp.isDeel && sageName && !existing.childName);
+
+          if (needsUpdate) {
+            await db
+              .update(employeeChildren)
+              .set({
+                notes: sageNote ?? existing.notes,
+                ...(emp.isDeel && sageName && !existing.childName
+                  ? { childName: sageName }
+                  : {}),
+              })
+              .where(eq(employeeChildren.id, existing.id));
+            updated++;
+          } else {
+            skipped++;
+          }
+        } else {
+          // Insert new child
+          await db.insert(employeeChildren).values({
+            employeeId: emp.id,
+            childName: emp.isDeel ? sageName : null,
+            birthDate: sc.birth_date,
+            notes: sageNote,
+          });
+          added++;
+        }
+      }
+    } catch (err) {
+      const msg = `Failed to sync children for ${emp.fullName} (sage_id=${sageId}): ${err}`;
+      console.error(msg);
+      errors.push(msg);
+    }
+  }
+
+  console.log(`Children sync: ${added} added, ${updated} updated, ${skipped} skipped, ${errors.length} errors`);
+  return { added, updated, skipped, errors };
 }

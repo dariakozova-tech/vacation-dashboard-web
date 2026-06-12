@@ -7,6 +7,7 @@ import {
   mapSageEmployees,
   getMappingCoverage,
   getLastSyncLog,
+  syncChildrenFromSage,
 } from '@/lib/sage-hr/sync';
 import type { Discrepancy } from '@/lib/sage-hr/sync';
 
@@ -75,5 +76,18 @@ export async function getLastSyncAction() {
   } catch (e) {
     console.error('getLastSyncAction error:', e);
     return { success: false as const, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+export async function syncChildrenAction(): Promise<
+  ActionResult<{ added: number; updated: number; skipped: number; errors: string[] }>
+> {
+  try {
+    const result = await syncChildrenFromSage();
+    revalidatePath('/');
+    return { success: true, data: result };
+  } catch (e) {
+    console.error('syncChildrenAction error:', e);
+    return { success: false, error: e instanceof Error ? e.message : String(e) };
   }
 }

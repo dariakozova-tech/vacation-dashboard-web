@@ -7,6 +7,7 @@ import {
   mapEmployeesAction,
   getCoverageAction,
   getLastSyncAction,
+  syncChildrenAction,
 } from '@/lib/actions/sageSync';
 import type { Discrepancy } from '@/lib/sage-hr/sync';
 
@@ -32,6 +33,11 @@ export default function SageSyncPage() {
     unmappedEmployees: { fullName: string; email: string | null }[];
   } | null>(null);
   const [lastSync, setLastSync] = useState<LastSync>(null);
+  const [childrenResult, setChildrenResult] = useState<{
+    added: number;
+    updated: number;
+    skipped: number;
+  } | null>(null);
   const [loading, setLoading] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -92,6 +98,25 @@ export default function SageSyncPage() {
     const result = await getCoverageAction();
     if (result.success) {
       setCoverage(result.data);
+    } else {
+      setError(result.error);
+    }
+    setLoading('');
+  };
+
+  const handleSyncChildren = async () => {
+    setLoading('children');
+    setError(null);
+    const result = await syncChildrenAction();
+    if (result.success) {
+      setChildrenResult({
+        added: result.data.added,
+        updated: result.data.updated,
+        skipped: result.data.skipped,
+      });
+      if (result.data.errors.length > 0) {
+        setError(`Children sync errors: ${result.data.errors.join('; ')}`);
+      }
     } else {
       setError(result.error);
     }
@@ -167,6 +192,13 @@ export default function SageSyncPage() {
         >
           {loading === 'import' ? 'Importing...' : 'Run Import'}
         </button>
+        <button
+          onClick={handleSyncChildren}
+          disabled={!!loading}
+          style={{ ...btnStyle, background: '#5856D6', color: '#fff' }}
+        >
+          {loading === 'children' ? 'Syncing...' : 'Sync Children from Sage'}
+        </button>
       </div>
 
       {/* Last sync */}
@@ -209,6 +241,18 @@ export default function SageSyncPage() {
           <div style={{ fontSize: 13 }}>
             Додано: <strong>{importResult.added}</strong> &nbsp;|&nbsp;
             Оновлено: <strong>{importResult.updated}</strong>
+          </div>
+        </div>
+      )}
+
+      {/* Children sync result */}
+      {childrenResult && (
+        <div style={{ marginBottom: 24, padding: 16, background: '#EDE7F6', borderRadius: 10 }}>
+          <h3 style={{ fontSize: 14, fontWeight: 600, color: '#4527A0', marginBottom: 4 }}>Children Sync Complete</h3>
+          <div style={{ fontSize: 13 }}>
+            Додано: <strong>{childrenResult.added}</strong> &nbsp;|&nbsp;
+            Оновлено: <strong>{childrenResult.updated}</strong> &nbsp;|&nbsp;
+            Без змін: <strong>{childrenResult.skipped}</strong>
           </div>
         </div>
       )}
